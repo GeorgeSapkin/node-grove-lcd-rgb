@@ -20,9 +20,9 @@ const REG_PERIOD = 0x07;
 const REG_OUTPUT = 0x08;
 
 const Color = {
-    Blue:   0x02,
-    Green:  0x03,
-    Red:    0x04
+    Blue:  0x02,
+    Green: 0x03,
+    Red:   0x04
 };
 
 // Commands
@@ -77,6 +77,15 @@ function sleep(timeout) {
     return new Promise(resolve => setTimeout(resolve, timeout));
 }
 
+const command         = Symbol();
+const displayControl  = Symbol();
+const displayFunction = Symbol();
+const displayMode     = Symbol();
+const setReg          = Symbol();
+const write           = Symbol();
+const writeBytes      = Symbol();
+const writeByteSync   = Symbol();
+
 class GroveLCDRGB {
     constructor({
         characterSize = CharacterSize._5x8,
@@ -94,24 +103,24 @@ class GroveLCDRGB {
 
         const bus = openSync(busNumber);
 
-        this._writeByteSync = bus.writeByteSync.bind(bus);
+        this[writeByteSync] = bus.writeByteSync.bind(bus);
 
-        this._command = bus.writeByteSync.bind(
+        this[command] = bus.writeByteSync.bind(
             bus, ADDR_LCD, SET_DDRAM_ADDR);
 
-        this._writeBytes = bus.i2cWriteSync.bind(bus, ADDR_LCD);
+        this[writeBytes] = bus.i2cWriteSync.bind(bus, ADDR_LCD);
 
-        this._write = bus.writeByteSync.bind(
+        this[write] = bus.writeByteSync.bind(
             bus, ADDR_LCD, SET_CGRAM_ADDR);
 
-        this._setReg = bus.writeByteSync.bind(bus, ADDR_RGB);
+        this[setReg] = bus.writeByteSync.bind(bus, ADDR_RGB);
 
-        this._displayFunction = characterSize | lines;
+        this[displayFunction] = characterSize | lines;
 
-        this._command(FUNCTION_SET | this._displayFunction);
+        this[command](FUNCTION_SET | this[displayFunction]);
 
         // turn the display on with no cursor or blinking default
-        this._displayControl
+        this[displayControl]
             = DISPLAY_ON
             | BLINK_OFF
             | CURSOR_OFF;
@@ -123,137 +132,194 @@ class GroveLCDRGB {
         this.blinkLEDOff();
 
         // Initialize to default text direction (for romance languages)
-        this._displayMode = ENTRY_LEFT | ENTRY_SHIFT_DECREMENT;
+        this[displayMode] = ENTRY_LEFT | ENTRY_SHIFT_DECREMENT;
         // Set the entry mode
-        this._command(ENTRY_MODE_SET | this._displayMode);
+        this[command](ENTRY_MODE_SET | this[displayMode]);
 
         // Initialize backlight
-        this._setReg(REG_MODE1, 0);
+        this[setReg](REG_MODE1, 0);
         // Set LEDs controllable by both PWM and GRPPWM registers
-        this._setReg(REG_OUTPUT, 0xff);
+        this[setReg](REG_OUTPUT, 0xff);
         // Set MODE2 values
         // 0010 0000 -> 0x20  (DMBLNK to 1, i.e. blinky mode)
-        this._setReg(REG_MODE2, 0x20);
+        this[setReg](REG_MODE2, 0x20);
 
         this.setRGB(255, 255, 255);
     }
 
+    /**
+     * Turn the display on.
+     */
     on() {
-        this._displayControl |= DISPLAY_ON;
-        this._command(DISPLAY_CONTROL | this._displayControl);
+        this[displayControl] |= DISPLAY_ON;
+        this[command](DISPLAY_CONTROL | this[displayControl]);
     }
 
+    /**
+     * Turn the display off.
+     */
     off() {
-        this._displayControl &= ~DISPLAY_ON;
-        this._command(DISPLAY_CONTROL | DISPLAY_OFF);
+        this[displayControl] &= ~DISPLAY_ON;
+        this[command](DISPLAY_CONTROL | DISPLAY_OFF);
     }
 
+    /**
+     * Clear text from display.
+     */
     clear() {
-        this._command(CLEAR_DISPLAY);
+        this[command](CLEAR_DISPLAY);
     }
 
-    home() {
-        this._command(RETURN_HOME);
-    }
-
+    /**
+     * Turn the cursor blinking on.
+     */
     blinkOn() {
-        this._displayControl |= BLINK_ON;
-        this._command(DISPLAY_CONTROL | this._displayControl);
+        this[displayControl] |= BLINK_ON;
+        this[command](DISPLAY_CONTROL | this[displayControl]);
     }
 
-    // Turn on and off the blinking cursor
+    /**
+     * Turn the cursor blinking off.
+     */
     blinkOff() {
-        this._displayControl &= ~BLINK_ON;
-        this._command(DISPLAY_CONTROL | this._displayControl);
+        this[displayControl] &= ~BLINK_ON;
+        this[command](DISPLAY_CONTROL | this[displayControl]);
     }
 
+    /**
+     * Turn the cursor on.
+     */
     cursorOn() {
-        this._displayControl |= CURSOR_ON;
-        this._command(DISPLAY_CONTROL | this._displayControl);
+        this[displayControl] |= CURSOR_ON;
+        this[command](DISPLAY_CONTROL | this[displayControl]);
     }
 
-    // Turns the underline cursor on/off
+    /**
+     * Turn the cursor off.
+     */
     cursorOff() {
-        this._displayControl &= ~CURSOR_ON;
-        this._command(DISPLAY_CONTROL | this._displayControl);
+        this[displayControl] &= ~CURSOR_ON;
+        this[command](DISPLAY_CONTROL | this[displayControl]);
     }
 
-    // These commands scroll the display without changing the RAM
+    /**
+     * Move cursor left.
+     */
     cursorLeft() {
-        this._command(CURSOR_SHIFT | CURSOR_MOVE | MOVE_LEFT);
-    }
-    cursorRight() {
-        this._command(CURSOR_SHIFT | CURSOR_MOVE | MOVE_RIGHT);
+        this[command](CURSOR_SHIFT | CURSOR_MOVE | MOVE_LEFT);
     }
 
+    /**
+     * Move cursor right.
+     */
+    cursorRight() {
+        this[command](CURSOR_SHIFT | CURSOR_MOVE | MOVE_RIGHT);
+    }
+
+    /**
+     * Set the location at which subsequent written text will be displayed to
+     * column 0, row 0.
+     */
+    home() {
+        this[command](RETURN_HOME);
+    }
+
+    /**
+     * Set the location at which subsequent written text will be displayed.
+     * @param {number} col
+     * @param {number} row
+     */
     setCursor(col, row) {
-        this._command(row === 0 ? col | 0x80 : col | 0xc0);
+        this[command](row === 0 ? col | 0x80 : col | 0xc0);
     }
 
     // This will 'right justify' text from the cursor
     autoscrollOn() {
-        this._displayMode |= ENTRY_SHIFT_INCREMENT;
-        this._command(ENTRY_MODE_SET | this._displayMode);
+        this[displayMode] |= ENTRY_SHIFT_INCREMENT;
+        this[command](ENTRY_MODE_SET | this[displayMode]);
     }
 
     // This will 'left justify' text from the cursor
     autoscrollOff() {
-        this._displayMode &= ~ENTRY_SHIFT_INCREMENT;
-        this._command(ENTRY_MODE_SET | this._displayMode);
+        this[displayMode] &= ~ENTRY_SHIFT_INCREMENT;
+        this[command](ENTRY_MODE_SET | this[displayMode]);
     }
 
     // These commands scroll the display without changing the RAM
     scrollLeft() {
-        this._command(CURSOR_SHIFT | DISPLAY_MOVE | MOVE_LEFT);
+        this[command](CURSOR_SHIFT | DISPLAY_MOVE | MOVE_LEFT);
     }
 
     scrollRight() {
-        this._command(CURSOR_SHIFT | DISPLAY_MOVE | MOVE_RIGHT);
+        this[command](CURSOR_SHIFT | DISPLAY_MOVE | MOVE_RIGHT);
     }
 
-    // Flow text from left to right
+    /**
+     * Flow text from left to right. Default mode.
+     */
     leftToRight() {
-        this._displayMode |= ENTRY_LEFT;
-        this._command(ENTRY_MODE_SET | this._displayMode);
+        this[displayMode] |= ENTRY_LEFT;
+        this[command](ENTRY_MODE_SET | this[displayMode]);
     }
 
-    // Flow text from right to left
+    /**
+     * Flow text from right to left
+     */
     rightToLeft() {
-        this._displayMode &= ~ENTRY_LEFT;
-        this._command(ENTRY_MODE_SET | this._displayMode);
+        this[displayMode] &= ~ENTRY_LEFT;
+        this[command](ENTRY_MODE_SET | this[displayMode]);
     }
 
-    // Control the backlight LED blinking
+    /**
+     * Control the backlight LED blinking.
+     * @param {number} ratio Blink ratio. On time in 1/256 of a second.
+     */
     blinkLEDOn(ratio = 0x7f) {
         // blink period in seconds = (<reg 7> + 1) / 24
+        // blink every second
+        this[setReg](REG_PERIOD, 0x17);
+
         // on/off ratio = <reg 6> / 256
-        this._setReg(REG_PERIOD, 0x17);   // blink every second
-        this._setReg(REG_RATIO,  ratio);  // half on, half off
+        this[setReg](REG_RATIO, ratio);
     }
 
+    /**
+     * Turn off backlight LED blinking.
+     */
     blinkLEDOff() {
-        this._setReg(REG_PERIOD, 0x00);
-        this._setReg(REG_RATIO,  0xff);
+        this[setReg](REG_PERIOD, 0x00);
+        this[setReg](REG_RATIO,  0xff);
     }
 
     createChar(location, charmap) {
         // There are only 8 locations: 0-7
-        this._command(SET_CGRAM_ADDR | (location & 0x07) << 3);
-        this._writeBytes(9, Buffer.from([ SET_CGRAM_ADDR, ...charmap ]));
+        this[command](SET_CGRAM_ADDR | (location & 0x07) << 3);
+        this[writeBytes](9, Buffer.from([ SET_CGRAM_ADDR, ...charmap ]));
     }
 
+    /**
+     * Set backlight LED to specified color.
+     * @param {number} red Red component.
+     * @param {number} green Green component.
+     * @param {number} blue Blue component.
+     */
     setRGB(red, green, blue) {
-        this._setReg(Color.Red,   red);
-        this._setReg(Color.Green, green);
-        this._setReg(Color.Blue,  blue);
+        this[setReg](Color.Red,   red);
+        this[setReg](Color.Green, green);
+        this[setReg](Color.Blue,  blue);
     }
 
     setPWM(color, pwm) {
-        return this._setReg(color, pwm);
+        return this[setReg](color, pwm);
     }
 
+
+    /**
+     * Print text to the display without any additional formatting.
+     * @param {*} text Text to print.
+     */
     setTextRaw(text) {
-        return [...text].map(x => this._write(x.charCodeAt(0)));
+        return [...text].map(x => this[write](x.charCodeAt(0)));
     }
 
     setText(text) {

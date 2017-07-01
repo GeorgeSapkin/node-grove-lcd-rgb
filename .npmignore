@@ -3,4 +3,4 @@ examples
 images
 schematic
 test
-yarn.lock
+.eslintrc

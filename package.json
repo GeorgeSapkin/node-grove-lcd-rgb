@@ -3,13 +3,7 @@
   "version": "0.1.0",
   "description": "Grove LCD RGB API for Node.js",
   "main": "src/index.js",
-  "scripts": {
-    "deploy": "scp -r src/ examples/  10.1.0.138:/home/george/grove-lcd-rgb"
-  },
-  "repository": {
-    "type": "git",
-    "url": "github.com"
-  },
+  "repository": "GeorgeSapkin/node-grove-lcd-rgb",
   "keywords": [
     "grove",
     "i2c",
